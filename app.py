@@ -25,19 +25,6 @@ apriori_rules_df = None
 apriori_products_df = None
 is_apriori_trained = False
 
-# def convert_quantity_to_rating(quantity):
-#     """Convert quantity to rating scale 1-5"""
-#     if quantity >= 10:
-#         return 5
-#     elif quantity >= 7:
-#         return 4
-#     elif quantity >= 5:
-#         return 3
-#     elif quantity >= 3:
-#         return 2
-#     else:
-#         return 1
-
 def train_content_based(products_data):
     """Train content-based model"""
     global content_vectorizer, content_tfidf_matrix, content_products_df, is_content_trained
@@ -286,7 +273,6 @@ def get_apriori_recommendations(cart_items, num_recommendations=5):
         unique_rules.sort(key=lambda x: (x["lift"], x["confidence"]), reverse=True)
         top_rules = unique_rules[:num_recommendations]
 
-        # Gabungkan dengan info produk
         recommendations = []
         for rule in top_rules:
             info = apriori_products_df[apriori_products_df["product_id"] == rule["product_id"]]
@@ -312,123 +298,6 @@ def get_apriori_recommendations(cart_items, num_recommendations=5):
     except Exception as e:
         logger.error(f"Error getting Apriori recommendations: {str(e)}")
         return []
-
-
-
-# def train_collaborative_filtering(transactions_data):
-#     """Train collaborative filtering model"""
-#     global collaborative_model, collaborative_products_df, is_collaborative_trained
-    
-#     try:
-#         # Prepare transaction data for matrix factorization
-#         ratings_list = []
-#         product_info = {}
-        
-#         for transaction in transactions_data:
-#             transaction_id = transaction['id']
-            
-#             for item in transaction['transaksiItem']:
-#                 product_id = item['produkId']  # This should be produkId from TransaksiItem
-#                 quantity = item['jumlah']
-#                 rating = convert_quantity_to_rating(quantity)
-                
-#                 ratings_list.append({
-#                     'user_id': transaction_id,
-#                     'item_id': product_id,
-#                     'rating': rating
-#                 })
-                
-#                 # Store product info for later use
-#                 if product_id not in product_info:
-#                     product_info[product_id] = {
-#                         'nama': item['produk']['nama']
-#                     }
-        
-#         if not ratings_list:
-#             logger.error("No transaction data provided for collaborative filtering")
-#             return False
-        
-#         # Create DataFrame
-#         ratings_df = pd.DataFrame(ratings_list)
-        
-#         # Create Surprise dataset
-#         reader = Reader(rating_scale=(1, 5))
-#         data = Dataset.load_from_df(ratings_df[['user_id', 'item_id', 'rating']], reader)
-        
-#         # Train SVD model
-#         collaborative_model = SVD(n_factors=100, n_epochs=20, lr_all=0.005, reg_all=0.02)
-#         trainset = data.build_full_trainset()
-#         collaborative_model.fit(trainset)
-        
-#         # Store product info
-#         collaborative_products_df = pd.DataFrame.from_dict(product_info, orient='index')
-#         collaborative_products_df.reset_index(inplace=True)
-#         collaborative_products_df.rename(columns={'index': 'product_id'}, inplace=True)
-        
-#         is_collaborative_trained = True
-        
-#         logger.info(f"Collaborative model trained with {len(ratings_list)} ratings from {len(set([r['user_id'] for r in ratings_list]))} transactions")
-#         return True
-        
-#     except Exception as e:
-#         logger.error(f"Error training collaborative model: {str(e)}")
-#         return False
-
-# def get_collaborative_recommendations(cart_items, all_products, num_recommendations=5):
-#     """Get collaborative filtering recommendations"""
-#     global collaborative_model, collaborative_products_df, is_collaborative_trained
-    
-#     if not is_collaborative_trained:
-#         return []
-    
-#     try:
-#         # Get cart product IDs
-#         cart_product_ids = set([item['id'] for item in cart_items])
-        
-#         # Create a dummy user ID for prediction
-#         dummy_user_id = "temp_user"
-        
-#         # Get all available products
-#         all_product_ids = [p['id'] for p in all_products]
-        
-#         # Predict ratings for all products
-#         predictions = []
-#         for product_id in all_product_ids:
-#             if product_id not in cart_product_ids:  # Don't recommend items already in cart
-#                 pred = collaborative_model.predict(dummy_user_id, product_id)
-#                 predictions.append((product_id, pred.est))
-        
-#         # Sort by predicted rating
-#         predictions.sort(key=lambda x: x[1], reverse=True)
-        
-#         # Get top recommendations
-#         top_predictions = predictions[:num_recommendations]
-        
-#         # Build recommendations with full product data
-#         recommendations = []
-#         for product_id, score in top_predictions:
-#             # Find product in all_products
-#             product_data = next((p for p in all_products if p['id'] == product_id), None)
-#             if product_data:
-#                 recommendation = {
-#                     'id': product_data['id'],
-#                     'nama': product_data['nama'],
-#                     'harga': product_data['harga'],
-#                     'gambar': product_data['gambar'],
-#                     'stok': product_data['stok'],
-#                     'status': product_data['status'],
-#                     'score': float(score),
-#                     'UMKM': product_data.get('UMKM'),
-#                     'kategori': product_data.get('kategori'),
-#                     'ProdukVarian': product_data.get('ProdukVarian', [])
-#                 }
-#                 recommendations.append(recommendation)
-        
-#         return recommendations
-        
-#     except Exception as e:
-#         logger.error(f"Error getting collaborative recommendations: {str(e)}")
-#         return []
 
 # API Endpoints
 @app.route('/health', methods=['GET'])
@@ -474,32 +343,38 @@ def train_content_endpoint():
             "success": False,
             "message": str(e)
         }), 500
-
-# @app.route('/train-collaborative', methods=['POST'])
-# def train_collaborative_endpoint():
-#     """Train collaborative filtering model"""
-#     try:
-#         data = request.get_json()
-#         transactions_data = data.get('transactions', [])
+    
+@app.route('/recommend-content', methods=['POST'])
+def recommend_content_endpoint():
+    """Get content-based recommendations"""
+    try:
+        data = request.get_json()
+        cart_items = data.get('items', [])
+        num_recommendations = data.get('num_recommendations', 5)
         
-#         if not transactions_data:
-#             return jsonify({"error": "No transactions data provided"}), 400
+        if not cart_items:
+            return jsonify({
+                "success": False,
+                "message": "No cart items provided"
+            }), 400
         
-#         success = train_collaborative_filtering(transactions_data)
+        recommendations = get_content_recommendations(cart_items, num_recommendations)
         
-#         if success:
-#             return jsonify({
-#                 "message": "Collaborative filtering model trained successfully",
-#                 "total_transactions": len(transactions_data),
-#                 "timestamp": datetime.now().isoformat()
-#             })
-#         else:
-#             return jsonify({"error": "Failed to train collaborative model"}), 500
-            
-#     except Exception as e:
-#         logger.error(f"Error in train-collaborative endpoint: {str(e)}")
-#         return jsonify({"error": str(e)}), 500
-
+        return jsonify({
+            "success": True,
+            "recommendations": recommendations,
+            "method": "content_based",
+            "total_found": len(recommendations),
+            "cart_items_count": len(cart_items)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in recommend-content endpoint: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+    
 @app.route('/train-apriori', methods=['POST'])
 def train_apriori_endpoint():
     """Train Apriori model with transaction data"""
@@ -537,65 +412,6 @@ def train_apriori_endpoint():
             "success": False,
             "message": str(e)
         }), 500
-
-@app.route('/recommend-content', methods=['POST'])
-def recommend_content_endpoint():
-    """Get content-based recommendations"""
-    try:
-        data = request.get_json()
-        cart_items = data.get('items', [])
-        num_recommendations = data.get('num_recommendations', 5)
-        
-        if not cart_items:
-            return jsonify({
-                "success": False,
-                "message": "No cart items provided"
-            }), 400
-        
-        recommendations = get_content_recommendations(cart_items, num_recommendations)
-        
-        return jsonify({
-            "success": True,
-            "recommendations": recommendations,
-            "method": "content_based",
-            "total_found": len(recommendations),
-            "cart_items_count": len(cart_items)
-        })
-        
-    except Exception as e:
-        logger.error(f"Error in recommend-content endpoint: {str(e)}")
-        return jsonify({
-            "success": False,
-            "message": str(e)
-        }), 500
-
-# @app.route('/recommend-collaborative', methods=['POST'])
-# def recommend_collaborative_endpoint():
-#     """Get collaborative filtering recommendations"""
-#     try:
-#         data = request.get_json()
-#         cart_items = data.get('items', [])
-#         all_products = data.get('all_products', [])
-#         num_recommendations = data.get('num_recommendations', 5)
-        
-#         if not cart_items:
-#             return jsonify({"error": "No cart items provided"}), 400
-        
-#         if not all_products:
-#             return jsonify({"error": "No products data provided"}), 400
-        
-#         recommendations = get_collaborative_recommendations(cart_items, all_products, num_recommendations)
-        
-#         return jsonify({
-#             "recommendations": recommendations,
-#             "method": "collaborative",
-#             "total_found": len(recommendations),
-#             "cart_items_count": len(cart_items)
-#         })
-        
-#     except Exception as e:
-#         logger.error(f"Error in recommend-collaborative endpoint: {str(e)}")
-#         return jsonify({"error": str(e)}), 500
     
 @app.route('/recommend-apriori', methods=['POST'])
 def recommend_apriori_endpoint():
